@@ -8,6 +8,8 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from typing import Dict, Tuple
 import json
+import requests
+
 
 API_TOKEN = '6223143592:AAE3Di2QclY7OAx-P6v_0j5VuBs_xx0ZAxc'
 CREDENTIALS_FILE = 'credentials.json'
@@ -34,6 +36,35 @@ def get_gspread_client_manager():
 
 def get_gspread_client():
     return gspread.service_account(filename=CREDENTIALS_FILE)
+
+def get_game_description_and_cover(game_title: str, api_key: str) -> Tuple[str, str]:
+    search_url = f"https://api.rawg.io/api/games?key={api_key}&search={game_title}&language=ru-RU"
+    search_response = requests.get(search_url)
+    search_data = search_response.json()
+
+    if search_data["count"] > 0:
+        game_info = search_data["results"][0]
+        game_slug = game_info["slug"]
+
+        game_details_url_ru = f"https://api.rawg.io/api/games/{game_slug}?key={api_key}&language=ru-RU"
+        game_details_response_ru = requests.get(game_details_url_ru)
+        game_details_data_ru = game_details_response_ru.json()
+
+        game_details_url_en = f"https://api.rawg.io/api/games/{game_slug}?key={api_key}&language=en-US"
+        game_details_response_en = requests.get(game_details_url_en)
+        game_details_data_en = game_details_response_en.json()
+
+        game_description_ru = game_details_data_ru["description_raw"]
+        game_description_en = game_details_data_en["description_raw"]
+
+        game_cover_url = game_info["background_image"]
+
+        if game_description_ru:
+            return game_description_ru, game_cover_url
+        else:
+            return game_description_en, game_cover_url
+    else:
+        return "Описание игры не найдено.", None
 
 def get_cells_info(service, spreadsheet_id, sheet_name, cell_addresses):
     print(f"Getting cell info for addresses: {cell_addresses}")
@@ -166,17 +197,27 @@ async def on_game_selected(call: types.CallbackQuery, game_title: str, game_info
     difficulty = game_info["difficulty"]
     duration = game_info["duration"]
     trophy = game_info["trophy"]
+    api_key = "4bc045b03add4da58f6ce570eada124b"
+    game_description, game_cover_url = get_game_description_and_cover(game_title, api_key)
 
     response = text(
         bold('Название игры'), ": ", game_title, "\n",
         bold('Сложность'), ": ", difficulty, "\n",
         bold('Продолжительность'), ": ", duration, "\n",
-        bold('Трофей'), ": ", trophy,
+        bold('Трофей'), ": ", trophy, "\n",
+        bold('Описание'), ": ", game_description,
         sep=""
     )
 
-    await bot.send_message(chat_id=call.from_user.id, text=response, parse_mode=ParseMode.MARKDOWN)
+    # Обрезаем подпись, если она слишком длинная
+    max_caption_length = 1024
+    if len(response) > max_caption_length:
+        response = response[:max_caption_length - 3] + "..."
 
+    if game_cover_url:
+        await bot.send_photo(chat_id=call.from_user.id, photo=game_cover_url, caption=response, parse_mode=ParseMode.MARKDOWN)
+    else:
+        await bot.send_message(chat_id=call.from_user.id, text=response, parse_mode=ParseMode.MARKDOWN)
 
 
 
