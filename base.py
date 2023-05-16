@@ -69,7 +69,7 @@ def parse_message(message_text):
             else:
                 filters["duration_min"] = filters["duration_max"] = float(words[i + 1])
 
-        elif word in ['гонки', 'шутеры', 'rpg', 'платформеры', 'приключения', 'стратегии']:
+        elif word in ['гонки', 'шутеры', 'rpg', 'платформеры', 'приключения', 'стратегии', 'рпг', 'соулсы']:
             filters["genre"] = word.lower()
 
         elif word in ['соло', 'кооп']:
@@ -195,7 +195,7 @@ def get_game_description_and_cover(game_title: str, api_key: str) -> Tuple[str, 
     else:
         return "Описание игры не найдено.", None
 
-
+'''
 
 
 async def on_game_selected(call: types.CallbackQuery, game_title: str, game_info: dict):
@@ -227,7 +227,7 @@ async def on_game_selected(call: types.CallbackQuery, game_title: str, game_info
     else:
         await bot.send_message(chat_id=call.from_user.id, text=response, parse_mode=ParseMode.MARKDOWN, reply_markup=link_button)
 
-
+'''
 
 
 @dp.message_handler(commands=["start", "help"])
@@ -237,28 +237,88 @@ async def send_welcome(message: types.Message):
 
 game_genre_data = None
 
+message_with_inline_keyboard_id = None
+
 @dp.message_handler()
 async def process_message(message: types.Message):
-    global game_genre_data
+    global game_genre_data, message_with_inline_keyboard_id
     filters = parse_message(message.text)
     service = get_google_sheets_service()
     game_genre_data = find_games_by_filters(service, filters)
 
     if game_genre_data:
         inline_keyboard = create_inline_keyboard(game_genre_data)
-        await bot.send_message(chat_id=message.chat.id, text="Выберите игру:", reply_markup=inline_keyboard)
+        sent_message = await bot.send_message(chat_id=message.chat.id, text="Выберите игру:", reply_markup=inline_keyboard)
+        message_with_inline_keyboard_id = sent_message.message_id  # сохраняем id сообщения
     else:
         await message.reply(f"Игр, соответствующих вашим критериям, не найдено. Попробуйте изменить фильтры.")
 
 
+
+
+last_messages = []
+
+async def delete_old_message(chat_id):
+    if len(last_messages) >= 3:
+        message_id_to_delete = last_messages.pop(0)
+        try:
+            await bot.delete_message(chat_id, message_id_to_delete)
+        except Exception as e:
+            logging.error(f"Failed to delete message: {e}")
+
+async def on_game_selected(call: types.CallbackQuery, game_title: str, game_info: dict):
+    await delete_old_message(call.from_user.id)
+
+    difficulty = game_info["difficulty"]
+    duration = game_info["duration"]
+    stratege_link = game_info["stratege_link"]
+    game_type = game_info["type"]
+
+    api_key = "4bc045b03add4da58f6ce570eada124b"
+    game_description, game_cover_url = get_game_description_and_cover(game_title, api_key)
+
+    response = text(
+        bold(game_title), "\n\n",
+        'Сложность', ": ", difficulty, "\n",
+        'Продолжительность', ": ", duration, "\n",
+        'Тип игры', ": ", game_type, "\n",
+        sep=""
+    )
+
+    max_caption_length = 1024
+    if len(response) > max_caption_length:
+        response = response[:max_caption_length - 3] + "..."
+
+    link_button = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text="Перейти к игре", url=stratege_link))
+
+    if game_cover_url:
+        sent_message = await bot.send_photo(chat_id=call.from_user.id, photo=game_cover_url, caption=response, parse_mode=ParseMode.MARKDOWN, reply_markup=link_button)
+    else:
+        sent_message = await bot.send_message(chat_id=call.from_user.id, text=response, parse_mode=ParseMode.MARKDOWN, reply_markup=link_button)
+
+    last_messages.append(sent_message.message_id)
+
+
+
+
 @dp.callback_query_handler()
 async def process_callback(call: types.CallbackQuery):
+    global message_with_inline_keyboard_id
     game_title = call.data
     game_info = game_genre_data.get(game_title)
     if game_info:
+        # удаление сообщения с кнопками
         await on_game_selected(call, game_title, game_info)
+        if message_with_inline_keyboard_id is not None:
+            try:
+                await bot.delete_message(chat_id=call.message.chat.id, message_id=message_with_inline_keyboard_id)
+                message_with_inline_keyboard_id = None
+            except Exception as e:
+                logging.error(f"Failed to delete message: {e}")
+        #await on_game_selected(call, game_title, game_info)
     else:
         await call.answer("Ошибка: информация об игре не найдена.")
+
 
 if __name__ == "__main__":
     from aiogram import executor
