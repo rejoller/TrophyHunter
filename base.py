@@ -56,26 +56,31 @@ def parse_message(message_text):
         if word == 'сложность':
             if words[i + 1] == 'от':
                 filters["difficulty_min"] = float(words[i + 2])
+                if len(words) > i+3 and words[i + 3] == 'до':
+                    filters["difficulty_max"] = float(words[i + 4])
             elif words[i + 1] == 'до':
                 filters["difficulty_max"] = float(words[i + 2])
             else:
                 filters["difficulty_min"] = filters["difficulty_max"] = float(words[i + 1])
 
-        elif word == 'продолжительность':
+        elif word == 'время':
             if words[i + 1] == 'от':
                 filters["duration_min"] = float(words[i + 2])
+                if len(words) > i+3 and words[i + 3] == 'до':
+                    filters["duration_max"] = float(words[i + 4])
             elif words[i + 1] == 'до':
                 filters["duration_max"] = float(words[i + 2])
             else:
                 filters["duration_min"] = filters["duration_max"] = float(words[i + 1])
 
-        elif word in ['гонки', 'шутеры', 'rpg', 'платформеры', 'приключения', 'стратегии', 'рпг', 'соулсы']:
+        elif word in ['гонки', 'шутеры', 'rpg', 'платформеры','соулсы', 'экшены']:
             filters["genre"] = word.lower()
 
         elif word in ['соло', 'кооп']:
             filters["type"] = word.lower()
     print(f"Filters: {filters}")
     return filters
+
 
 
 def get_cell_info(service, spreadsheet_id, sheet_name, row, col):
@@ -93,7 +98,36 @@ def get_cell_info(service, spreadsheet_id, sheet_name, row, col):
     print(f"Cell value: {cell_value}, Cell color: {color}")
     return cell_value, color
 
-import time
+
+
+from bs4 import BeautifulSoup
+
+
+def parse_game_info(url):
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    selectors = {
+        "Игра есть у:": '#tlpfid_global_uploads_bx > div > div.tlpf_global_content_static > div:nth-child(1) > div.gtpl_gb_body.gtpl_gb_bindent > div > div:nth-child(2)',
+        "получили платину": '#tlpfid_global_uploads_bx > div > div.tlpf_global_content_static > div:nth-child(1) > div.gtpl_gb_body.gtpl_gb_bindent > div > div:nth-child(6)',
+        "среднее завершение": '#tlpfid_global_uploads_bx > div > div.tlpf_global_content_static > div:nth-child(1) > div.gtpl_gb_body.gtpl_gb_bindent > div > div:nth-child(10)',
+        "среднее время платины": '#tlpfid_global_uploads_bx > div > div.tlpf_global_content_static > div:nth-child(1) > div.gtpl_gb_body.gtpl_gb_bindent > div > div:nth-child(14)',
+        "получили платины": '#tlpfid_global_uploads_bx > div > div.tlpf_global_content_static > div:nth-child(1) > div.gtpl_gb_body.gtpl_gb_bindent > div > div:nth-child(18)',
+        "хардкорные очки": '#tlpfid_global_uploads_bx > div > div.tlpf_global_content_static > div:nth-child(1) > div.gtpl_gb_body.gtpl_gb_bindent > div > div.tlpf_bsc_label_list_right.htmlTPLBox',
+        "очки редкости": '#tlpfid_global_uploads_bx > div > div.tlpf_global_content_static > div:nth-child(1) > div.gtpl_gb_body.gtpl_gb_bindent > div > div:nth-child(26)',
+    }
+
+    game_info = {}
+    for label, selector in selectors.items():
+        element = soup.select_one(selector)
+        if element:
+            game_info[label] = element.text
+        else:
+            game_info[label] = "Не найдено"
+
+    return game_info
+
+
 
 
 
@@ -103,9 +137,6 @@ def find_games_by_filters(service, filters):
     range_name = 'Евген!A1:H'
     response = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range=range_name).execute()
     values = response.get('values', [])
-
-    if not filters["genre"]:  # Добавляем проверку на пустое поле жанра
-        return []
 
     count_of_ones = 0
     for row in values:
@@ -144,6 +175,7 @@ def find_games_by_filters(service, filters):
                 }
 
     return game_data
+
 
 
 
@@ -194,42 +226,6 @@ def get_game_description_and_cover(game_title: str, api_key: str) -> Tuple[str, 
             return game_description_en, game_cover_url
     else:
         return "Описание игры не найдено.", None
-
-'''
-
-
-async def on_game_selected(call: types.CallbackQuery, game_title: str, game_info: dict):
-    difficulty = game_info["difficulty"]
-    duration = game_info["duration"]
-    stratege_link = game_info["stratege_link"]
-    game_type = game_info["type"]
-
-    api_key = "4bc045b03add4da58f6ce570eada124b"
-    game_description, game_cover_url = get_game_description_and_cover(game_title, api_key)
-
-    response = text(
-        bold(game_title), "\n\n",
-        'Сложность', ": ", difficulty, "\n",
-        'Продолжительность', ": ", duration, "\n",
-        'Тип игры', ": ", game_type, "\n",
-        sep=""
-    )
-
-    max_caption_length = 1024
-    if len(response) > max_caption_length:
-        response = response[:max_caption_length - 3] + "..."
-
-    # Создаем инлайн кнопку для ссылки
-    link_button = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text="Перейти к игре", url=stratege_link))
-
-    if game_cover_url:
-        await bot.send_photo(chat_id=call.from_user.id, photo=game_cover_url, caption=response, parse_mode=ParseMode.MARKDOWN, reply_markup=link_button)
-    else:
-        await bot.send_message(chat_id=call.from_user.id, text=response, parse_mode=ParseMode.MARKDOWN, reply_markup=link_button)
-
-'''
-
-
 @dp.message_handler(commands=["start", "help"])
 async def send_welcome(message: types.Message):
     await message.reply("Привет! Введите жанр игры, и я помогу найти игры этого жанра.")
@@ -266,6 +262,8 @@ async def delete_old_message(chat_id):
         except Exception as e:
             logging.error(f"Failed to delete message: {e}")
 
+
+
 async def on_game_selected(call: types.CallbackQuery, game_title: str, game_info: dict):
     await delete_old_message(call.from_user.id)
 
@@ -277,13 +275,24 @@ async def on_game_selected(call: types.CallbackQuery, game_title: str, game_info
     api_key = "4bc045b03add4da58f6ce570eada124b"
     game_description, game_cover_url = get_game_description_and_cover(game_title, api_key)
 
+    # Добавить информацию со страницы Stratege
+    stratege_info = parse_game_info(stratege_link)
+
     response = text(
         bold(game_title), "\n\n",
         'Сложность', ": ", difficulty, "\n",
         'Продолжительность', ": ", duration, "\n",
         'Тип игры', ": ", game_type, "\n",
+        # Дополнительные данные с Stratege
+        'Игра есть у', ": ", stratege_info.get("Игра есть у:", "Не найдено"), "\n",
+        'Получили платину', ": ", stratege_info.get("получили платину", "Не найдено"), "\n",
+        'Среднее завершение', ": ", stratege_info.get("среднее завершение", "Не найдено"), "\n",
+        'Среднее время платины', ": ", stratege_info.get("среднее время платины", "Не найдено"), "\n",
+        'Получили платины', ": ", stratege_info.get("получили платины", "Не найдено"), "\n",
+        'Хардкорные очки', ": ", stratege_info.get("хардкорные очки", "Не найдено"), "\n",
+        'Очки редкости', ": ", stratege_info.get("очки редкости", "Не найдено"), "\n",
         sep=""
-    )
+    )  # Здесь была пропущена закрывающая скобка
 
     max_caption_length = 1024
     if len(response) > max_caption_length:
@@ -297,6 +306,7 @@ async def on_game_selected(call: types.CallbackQuery, game_title: str, game_info
         sent_message = await bot.send_message(chat_id=call.from_user.id, text=response, parse_mode=ParseMode.MARKDOWN, reply_markup=link_button)
 
     last_messages.append(sent_message.message_id)
+
 
 
 
@@ -323,9 +333,7 @@ async def process_callback(call: types.CallbackQuery):
 if __name__ == "__main__":
     from aiogram import executor
 
-    # Зарегистрировать обработчик сообщений
+
     dp.register_message_handler(process_message)
 
-    # Запустить цикл обработки обновлений
     executor.start_polling(dp, skip_updates=True)
-
