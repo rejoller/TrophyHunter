@@ -9,10 +9,10 @@ from googleapiclient.discovery import build
 from typing import Dict, Tuple
 import json
 
-API_TOKEN = '6223143592:AAE3Di2QclY7OAx-P6v_0j5VuBs_xx0ZAxc'
+API_TOKEN = ''
 CREDENTIALS_FILE = 'credentials.json'
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
-SPREADSHEET_ID = '14iMjA7HdkSCAkInETlOxk98xRLq3YnrSiiWXFj120A0'
+SPREADSHEET_ID = ''
 RANGE_NAME = 'Евген!A1:E1000'
 GENRE_RANGE = 'Евген!G2:H4'
 
